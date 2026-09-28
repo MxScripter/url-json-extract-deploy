@@ -1,1 +1,347 @@
-PLACEHOLDER
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>url-json-extract — PDF → schema JSON via x402</title>
+  <style>
+    :root { color-scheme: light dark; --fg: #e8e8e8; --muted: #9a9a9a; --border: #333; --bg: #111; --card: #1a1a1a; --accent: #6ee7b7; --code: #0d0d0d; --btn: #047857; --btn-fg: #fff; }
+    @media (prefers-color-scheme: light) {
+      :root { --fg: #111; --muted: #555; --border: #ddd; --bg: #fafafa; --card: #fff; --accent: #047857; --code: #f3f3f3; --btn: #047857; --btn-fg: #fff; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: var(--bg); color: var(--fg); }
+    main { max-width: 740px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    h1 { font-size: 1.45rem; margin: 0 0 0.35rem; letter-spacing: -0.02em; }
+    h2 { font-size: 1.05rem; margin: 2rem 0 0.6rem; }
+    .muted { color: var(--muted); }
+    a { color: var(--accent); }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.84em; }
+    pre { background: var(--code); border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem 1rem; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.1rem; margin: 0.75rem 0; }
+    .price { font-weight: 600; }
+    ul.links { padding-left: 1.1rem; }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin: 0.75rem 0 0.35rem; }
+    input[type=url], textarea {
+      width: 100%; background: var(--code); color: var(--fg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.65rem 0.75rem; font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.84em;
+    }
+    textarea { min-height: 140px; resize: vertical; }
+    .row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.9rem; align-items: center; }
+    button {
+      cursor: pointer; border: 0; border-radius: 8px; padding: 0.55rem 0.9rem;
+      background: var(--btn); color: var(--btn-fg); font: 600 0.9rem/1.2 ui-sans-serif, system-ui, sans-serif;
+    }
+    button.secondary { background: transparent; color: var(--fg); border: 1px solid var(--border); }
+    button:disabled { opacity: 0.55; cursor: wait; }
+    #out { margin-top: 0.75rem; }
+    #walletStatus { font-size: 0.85rem; color: var(--muted); }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+    .label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 0.35rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>url-json-extract</h1>
+  <p class="muted">PDF / doc URL + JSON schema → structured JSON. Paid via <strong>x402</strong>.</p>
+
+  <p>
+    This is the live paid service for <code>POST /v1/doc-extract</code>.
+    Pass an HTTPS PDF URL and a JSON Schema; on success you get a schema-shaped JSON object.
+    No accounts. No Stripe.
+  </p>
+
+  <div class="card">
+    <p style="margin:0"><span class="price">$0.05</span> USDC per successful <code>POST /v1/doc-extract</code></p>
+    <p style="margin:0.4rem 0 0"><span class="price">$0.001</span> cheap demo <code>POST /v1/extract</code> (HTML URL → schema)</p>
+    <p class="muted" style="margin:0.5rem 0 0">Network: Base Sepolia (<code>eip155:84532</code>) for now · <a href="/health">GET /health</a> free</p>
+  </div>
+
+  <h2>Try it (human)</h2>
+  <p class="muted">
+    Connect a browser wallet on Base Sepolia with testnet USDC, then pay and extract in one step.
+    MetaMask / injected <code>window.ethereum</code> required.
+  </p>
+  <div class="card">
+    <form id="f">
+      <label for="url">HTTPS PDF URL</label>
+      <input id="url" name="url" type="url" required
+        value="https://raw.githubusercontent.com/invoice-x/invoice2data/master/tests/compare/AmazonWebServices.pdf" />
+
+      <label for="schema">JSON Schema</label>
+      <textarea id="schema" name="schema" required>{
+  "type": "object",
+  "properties": {
+    "invoice_number": { "type": "string" },
+    "date": { "type": "string" }
+  },
+  "required": ["invoice_number", "date"]
+}</textarea>
+
+      <div class="row">
+        <button type="button" id="btnConnect" class="secondary">Connect wallet</button>
+        <button type="submit" id="btnPay">Pay $0.05 & extract</button>
+        <button type="button" class="secondary" id="btn402">Preview unpaid 402</button>
+        <span id="walletStatus">Wallet: not connected</span>
+      </div>
+    </form>
+    <div id="out" hidden>
+      <div class="label" id="outLabel">Result</div>
+      <pre id="outPre"></pre>
+      <p class="muted" id="outHint" style="margin:0.6rem 0 0"></p>
+    </div>
+  </div>
+
+  <h2>Agent / curl</h2>
+  <pre id="curlBox">curl -sS -i -X POST https://url-json-extract-production.up.railway.app/v1/doc-extract \
+  -H 'content-type: application/json' \
+  -d '{"url":"https://raw.githubusercontent.com/invoice-x/invoice2data/master/tests/compare/AmazonWebServices.pdf","schema":{"type":"object","properties":{"invoice_number":{"type":"string"},"date":{"type":"string"}},"required":["invoice_number","date"]}}'</pre>
+
+  <p class="muted">Paid path (Node agent):</p>
+  <pre>import { privateKeyToAccount } from "viem/accounts";
+import { wrapFetchWithPayment, x402Client } from "@x402/fetch";
+import { ExactEvmScheme } from "@x402/evm/exact/client";
+
+const account = privateKeyToAccount(process.env.PRIVATE_KEY);
+const client = new x402Client();
+client.register("eip155:*", new ExactEvmScheme(account));
+const fetchWithPayment = wrapFetchWithPayment(fetch, client);
+
+const res = await fetchWithPayment(
+  "https://url-json-extract-production.up.railway.app/v1/doc-extract",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ url: PDF_URL, schema: YOUR_SCHEMA })
+  }
+);
+console.log(res.status, await res.json());</pre>
+
+  <h2>Before / after</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="label">PDF text (snippet)</div>
+      <pre style="margin:0;border:0;padding:0;background:transparent">Invoice Number: 42183017
+Date: August 3, 2014
+Amazon Web Services…</pre>
+    </div>
+    <div class="card">
+      <div class="label">→ schema JSON</div>
+      <pre style="margin:0;border:0;padding:0;background:transparent">{
+  "invoice_number": "42183017",
+  "date": "August 3 , 2014"
+}</pre>
+    </div>
+  </div>
+
+  <h2>Links</h2>
+  <ul class="links">
+    <li><a href="/health"><code>GET /health</code></a> — free liveness</li>
+    <li><code>POST /v1/doc-extract</code> — live paid PDF → JSON ($0.05)</li>
+    <li><code>POST /v1/extract</code> — cheap demo HTML URL → JSON ($0.001)</li>
+    <li>Sample schemas:
+      <a href="/schemas/invoice.json">invoice</a> ·
+      <a href="/schemas/receipt.json">receipt</a> ·
+      <a href="/schemas/order.json">order</a>
+    </li>
+    <li><a href="https://docs.x402.org">x402 docs</a> · <a href="https://github.com/MxScripter/url-json-extract-deploy">repo / README</a></li>
+  </ul>
+</main>
+<script type="module">
+import { wrapFetchWithPayment, x402Client } from "https://esm.sh/@x402/fetch@2.27.0";
+import { ExactEvmScheme } from "https://esm.sh/@x402/evm@2.27.0/exact/client";
+import { createWalletClient, custom } from "https://esm.sh/viem@2.56.9";
+import { baseSepolia } from "https://esm.sh/viem@2.56.9/chains";
+
+const ENDPOINT = "/v1/doc-extract";
+const ABSOLUTE = "https://url-json-extract-production.up.railway.app/v1/doc-extract";
+const CAIP2 = "eip155:84532";
+const CHAIN_ID_HEX = "0x14a34"; // 84532 Base Sepolia
+
+const urlEl = document.getElementById("url");
+const schemaEl = document.getElementById("schema");
+const out = document.getElementById("out");
+const outPre = document.getElementById("outPre");
+const outLabel = document.getElementById("outLabel");
+const outHint = document.getElementById("outHint");
+const curlBox = document.getElementById("curlBox");
+const btnPay = document.getElementById("btnPay");
+const btn402 = document.getElementById("btn402");
+const btnConnect = document.getElementById("btnConnect");
+const walletStatus = document.getElementById("walletStatus");
+
+let connectedAddress = null;
+
+function show(label, text, hint) {
+  out.hidden = false;
+  outLabel.textContent = label;
+  outPre.textContent = text;
+  outHint.textContent = hint || "";
+}
+
+function parseBody() {
+  const url = urlEl.value.trim();
+  let schema;
+  try { schema = JSON.parse(schemaEl.value); }
+  catch (e) { throw new Error("Schema must be valid JSON: " + e.message); }
+  if (!url) throw new Error("URL required");
+  return { url, schema };
+}
+
+function curlFor(body) {
+  return "curl -sS -i -X POST " + ABSOLUTE + " \\\n" +
+    "  -H 'content-type: application/json' \\\n" +
+    "  -d '" + JSON.stringify(body).replace(/'/g, "'\\''") + "'";
+}
+
+function refreshCurl() {
+  try { curlBox.textContent = curlFor(parseBody()); }
+  catch (_) {}
+}
+
+function getProvider() {
+  if (!window.ethereum) throw new Error("No injected wallet (install MetaMask or similar)");
+  return window.ethereum;
+}
+
+async function ensureBaseSepolia(provider) {
+  const id = await provider.request({ method: "eth_chainId" });
+  if (id === CHAIN_ID_HEX) return;
+  try {
+    await provider.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: CHAIN_ID_HEX }],
+    });
+  } catch (err) {
+    if (err && (err.code === 4902 || err.code === -32603)) {
+      await provider.request({
+        method: "wallet_addEthereumChain",
+        params: [{
+          chainId: CHAIN_ID_HEX,
+          chainName: "Base Sepolia",
+          nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+          rpcUrls: ["https://sepolia.base.org"],
+          blockExplorerUrls: ["https://sepolia.basescan.org"],
+        }],
+      });
+    } else {
+      throw err;
+    }
+  }
+}
+
+async function connectWallet() {
+  const provider = getProvider();
+  await ensureBaseSepolia(provider);
+  const wallet = createWalletClient({
+    chain: baseSepolia,
+    transport: custom(provider),
+  });
+  const accounts = await wallet.requestAddresses();
+  if (!accounts || !accounts[0]) throw new Error("No account returned");
+  connectedAddress = accounts[0];
+  walletStatus.textContent = "Wallet: " + connectedAddress.slice(0, 6) + "…" + connectedAddress.slice(-4) + " (Base Sepolia)";
+  return { provider, wallet, address: connectedAddress };
+}
+
+function makeViemSigner(wallet, address) {
+  return {
+    address,
+    signTypedData: (args) => wallet.signTypedData({ account: address, ...args }),
+  };
+}
+
+btnConnect.addEventListener("click", async () => {
+  btnConnect.disabled = true;
+  try {
+    await connectWallet();
+    show("Wallet connected", connectedAddress, "Fund with Base Sepolia USDC, then Pay & extract.");
+  } catch (e) {
+    show("Connect failed", String(e.message || e), "");
+  } finally {
+    btnConnect.disabled = false;
+  }
+});
+
+btn402.addEventListener("click", async () => {
+  let body;
+  try { body = parseBody(); }
+  catch (e) { show("Invalid input", e.message, ""); return; }
+  curlBox.textContent = curlFor(body);
+  btn402.disabled = true;
+  try {
+    const res = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify(body),
+    });
+    const pr = res.headers.get("payment-required") || res.headers.get("PAYMENT-REQUIRED");
+    let decoded = null;
+    if (pr) {
+      try {
+        const pad = "=".repeat((4 - (pr.length % 4)) % 4);
+        decoded = JSON.parse(atob(pr.replace(/-/g, "+").replace(/_/g, "/") + pad));
+      } catch (_) {}
+    }
+    show(
+      res.status === 402 ? "Unpaid challenge (expected)" : "Response",
+      ["HTTP " + res.status, pr ? "PAYMENT-REQUIRED: present" : "PAYMENT-REQUIRED: missing", "",
+        decoded ? JSON.stringify(decoded, null, 2) : (await res.text())].join("\n"),
+      "Use Pay $0.05 & extract to settle with your wallet."
+    );
+  } catch (e) {
+    show("Request failed", String(e), "");
+  } finally {
+    btn402.disabled = false;
+  }
+});
+
+document.getElementById("f").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  let body;
+  try { body = parseBody(); }
+  catch (e) { show("Invalid input", e.message, ""); return; }
+  curlBox.textContent = curlFor(body);
+  btnPay.disabled = true;
+  show("Paying…", "Confirm the typed-data signature in your wallet.", "Amount: $0.05 USDC on Base Sepolia.");
+  try {
+    const { provider, wallet, address } = connectedAddress
+      ? { provider: getProvider(), wallet: createWalletClient({ chain: baseSepolia, transport: custom(getProvider()) }), address: connectedAddress }
+      : await connectWallet();
+    await ensureBaseSepolia(provider);
+    const signer = makeViemSigner(wallet, address);
+    const client = new x402Client({
+      spendControls: { maxAmountPerPayment: "$1" },
+    });
+    client.register(CAIP2, new ExactEvmScheme(signer));
+    const fetchWithPayment = wrapFetchWithPayment(fetch, client);
+    const res = await fetchWithPayment(ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    let pretty = text;
+    try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch (_) {}
+    const payHdr = res.headers.get("payment-response") || res.headers.get("PAYMENT-RESPONSE");
+    show(
+      res.ok ? "Extract result (paid)" : "HTTP " + res.status,
+      pretty,
+      res.ok
+        ? (payHdr ? "Payment settled. PAYMENT-RESPONSE present." : "OK — check body above.")
+        : "Payment or extract failed — see body."
+    );
+  } catch (e) {
+    show("Pay/extract failed", String(e && e.message ? e.message : e), "Need Base Sepolia USDC + approve signature. Or use agent snippet.");
+  } finally {
+    btnPay.disabled = false;
+  }
+});
+
+urlEl.addEventListener("change", refreshCurl);
+schemaEl.addEventListener("change", refreshCurl);
+refreshCurl();
+</script>
+</body>
+</html>
