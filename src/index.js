@@ -203,9 +203,9 @@ async function fetchSafe(urlString) {
 
 function decodeEntities(s) {
   return s
-    .replace(/&/g, "&")
-    .replace(/</g, "<")
-    .replace(/>/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/"/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/'/g, "'")
