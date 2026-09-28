@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "order_number": { "type": "string" },
+    "date": { "type": "string" },
+    "vendor": { "type": "string" },
+    "customer": { "type": "string" },
+    "total": { "type": "number" },
+    "currency": { "type": "string" },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": { "type": "string" },
+          "quantity": { "type": "number" },
+          "amount": { "type": "number" }
+        }
+      }
+    }
+  },
+  "required": ["order_number", "total"]
+}
