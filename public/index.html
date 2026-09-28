@@ -1,16 +1,254 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>url-json-extract</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>url-json-extract — PDF → schema JSON via x402</title>
+  <style>
+    :root { color-scheme: light dark; --fg: #e8e8e8; --muted: #9a9a9a; --border: #333; --bg: #111; --card: #1a1a1a; --accent: #6ee7b7; --code: #0d0d0d; --btn: #047857; --btn-fg: #fff; }
+    @media (prefers-color-scheme: light) {
+      :root { --fg: #111; --muted: #555; --border: #ddd; --bg: #fafafa; --card: #fff; --accent: #047857; --code: #f3f3f3; --btn: #047857; --btn-fg: #fff; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: var(--bg); color: var(--fg); }
+    main { max-width: 740px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    h1 { font-size: 1.45rem; margin: 0 0 0.35rem; letter-spacing: -0.02em; }
+    h2 { font-size: 1.05rem; margin: 2rem 0 0.6rem; }
+    .muted { color: var(--muted); }
+    a { color: var(--accent); }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.84em; }
+    pre { background: var(--code); border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem 1rem; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.1rem; margin: 0.75rem 0; }
+    .price { font-weight: 600; }
+    ul.links { padding-left: 1.1rem; }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin: 0.75rem 0 0.35rem; }
+    input[type=url], textarea {
+      width: 100%; background: var(--code); color: var(--fg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.65rem 0.75rem; font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.84em;
+    }
+    textarea { min-height: 140px; resize: vertical; }
+    .row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.9rem; }
+    button {
+      cursor: pointer; border: 0; border-radius: 8px; padding: 0.55rem 0.9rem;
+      background: var(--btn); color: var(--btn-fg); font: 600 0.9rem/1.2 ui-sans-serif, system-ui, sans-serif;
+    }
+    button.secondary { background: transparent; color: var(--fg); border: 1px solid var(--border); }
+    button:disabled { opacity: 0.55; cursor: wait; }
+    #out { margin-top: 0.75rem; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+    .label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 0.35rem; }
+  </style>
 </head>
 <body>
-  <main>
-    <h1>url-json-extract</h1>
-    <p>PDF or URL extraction into schema-shaped JSON via x402.</p>
-    <p><code>POST /v1/doc-extract</code> · <code>POST /v1/extract</code></p>
-    <p><a href="/health">Health</a></p>
-  </main>
+<main>
+  <h1>url-json-extract</h1>
+  <p class="muted">PDF / doc URL + JSON schema → structured JSON. Paid via <strong>x402</strong>.</p>
+
+  <p>
+    This is the live paid service for <code>POST /v1/doc-extract</code>.
+    Pass an HTTPS PDF URL and a JSON Schema; on success you get a schema-shaped JSON object.
+    No accounts. No Stripe.
+  </p>
+
+  <div class="card">
+    <p style="margin:0"><span class="price">$0.05</span> USDC per successful <code>POST /v1/doc-extract</code></p>
+    <p style="margin:0.4rem 0 0"><span class="price">$0.001</span> cheap demo <code>POST /v1/extract</code> (HTML URL → schema)</p>
+    <p class="muted" style="margin:0.5rem 0 0">Network: Base Sepolia (<code>eip155:84532</code>) for now · <a href="/health">GET /health</a> free</p>
+  </div>
+
+  <h2>Try it (human)</h2>
+  <p class="muted">
+    Fill the form, then either preview the unpaid <code>402</code> challenge or copy a ready curl.
+    Paying from a browser wallet is not wired here yet — use an agent or any x402 client with a funded Base Sepolia USDC wallet.
+  </p>
+  <div class="card">
+    <form id="f">
+      <label for="url">HTTPS PDF URL</label>
+      <input id="url" name="url" type="url" required
+        value="https://raw.githubusercontent.com/invoice-x/invoice2data/master/tests/compare/AmazonWebServices.pdf" />
+
+      <label for="schema">JSON Schema</label>
+      <textarea id="schema" name="schema" required>{
+  "type": "object",
+  "properties": {
+    "invoice_number": { "type": "string" },
+    "date": { "type": "string" }
+  },
+  "required": ["invoice_number", "date"]
+}</textarea>
+
+      <div class="row">
+        <button type="submit" id="btn402">Preview unpaid 402</button>
+        <button type="button" class="secondary" id="btnCurl">Show curl</button>
+      </div>
+    </form>
+    <div id="out" hidden>
+      <div class="label" id="outLabel">Result</div>
+      <pre id="outPre"></pre>
+      <p class="muted" id="outHint" style="margin:0.6rem 0 0"></p>
+    </div>
+  </div>
+
+  <h2>Next steps to pay</h2>
+  <ol>
+    <li>Fund a Base Sepolia wallet with testnet USDC.</li>
+    <li>Call <code>POST /v1/doc-extract</code> with body <code>{ "url", "schema" }</code> via <code>@x402/fetch</code> (or any x402 client). Unpaid → <code>402</code> + <code>PAYMENT-REQUIRED</code>; paid wrap retries → <code>200</code>.</li>
+    <li>Or hand the curl/snippet below to an agent.</li>
+  </ol>
+
+  <h2>Agent / curl</h2>
+  <pre id="curlBox">curl -sS -i -X POST https://url-json-extract-production.up.railway.app/v1/doc-extract \
+  -H 'content-type: application/json' \
+  -d '{"url":"https://raw.githubusercontent.com/invoice-x/invoice2data/master/tests/compare/AmazonWebServices.pdf","schema":{"type":"object","properties":{"invoice_number":{"type":"string"},"date":{"type":"string"}},"required":["invoice_number","date"]}}'</pre>
+
+  <p class="muted">Paid path (Node):</p>
+  <pre>import { privateKeyToAccount } from "viem/accounts";
+import { wrapFetchWithPayment, x402Client } from "@x402/fetch";
+import { registerExactEvmScheme } from "@x402/evm/exact/client";
+
+const account = privateKeyToAccount(process.env.PRIVATE_KEY);
+const client = new x402Client();
+registerExactEvmScheme(client, { signer: account });
+const fetchWithPayment = wrapFetchWithPayment(fetch, client);
+
+const res = await fetchWithPayment(
+  "https://url-json-extract-production.up.railway.app/v1/doc-extract",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ url: PDF_URL, schema: YOUR_SCHEMA })
+  }
+);
+console.log(res.status, await res.json());</pre>
+
+  <h2>Before / after</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="label">PDF text (snippet)</div>
+      <pre style="margin:0;border:0;padding:0;background:transparent">Invoice Number: 42183017
+Date: August 3, 2014
+Amazon Web Services…</pre>
+    </div>
+    <div class="card">
+      <div class="label">→ schema JSON</div>
+      <pre style="margin:0;border:0;padding:0;background:transparent">{
+  "invoice_number": "42183017",
+  "date": "August 3 , 2014"
+}</pre>
+    </div>
+  </div>
+
+  <h2>Links</h2>
+  <ul class="links">
+    <li><a href="/health"><code>GET /health</code></a> — free liveness</li>
+    <li><code>POST /v1/doc-extract</code> — live paid PDF → JSON ($0.05)</li>
+    <li><code>POST /v1/extract</code> — cheap demo HTML URL → JSON ($0.001)</li>
+    <li>Sample schemas:
+      <a href="/schemas/invoice.json">invoice</a> ·
+      <a href="/schemas/receipt.json">receipt</a> ·
+      <a href="/schemas/order.json">order</a>
+    </li>
+    <li><a href="https://docs.x402.org">x402 docs</a> · <a href="https://github.com/MxScripter/url-json-extract-deploy">repo / README</a></li>
+  </ul>
+<script>
+(function () {
+  const endpoint = "/v1/doc-extract";
+  const absolute = "https://url-json-extract-production.up.railway.app/v1/doc-extract";
+  const urlEl = document.getElementById("url");
+  const schemaEl = document.getElementById("schema");
+  const out = document.getElementById("out");
+  const outPre = document.getElementById("outPre");
+  const outLabel = document.getElementById("outLabel");
+  const outHint = document.getElementById("outHint");
+  const curlBox = document.getElementById("curlBox");
+  const btn402 = document.getElementById("btn402");
+
+  function parseBody() {
+    const url = urlEl.value.trim();
+    let schema;
+    try { schema = JSON.parse(schemaEl.value); }
+    catch (e) { throw new Error("Schema must be valid JSON: " + e.message); }
+    if (!url) throw new Error("URL required");
+    return { url, schema };
+  }
+
+  function show(label, text, hint) {
+    out.hidden = false;
+    outLabel.textContent = label;
+    outPre.textContent = text;
+    outHint.textContent = hint || "";
+  }
+
+  function curlFor(body) {
+    return "curl -sS -i -X POST " + absolute + " \\\n" +
+      "  -H 'content-type: application/json' \\\n" +
+      "  -d '" + JSON.stringify(body).replace(/'/g, "'\\''") + "'";
+  }
+
+  function refreshCurl() {
+    try { curlBox.textContent = curlFor(parseBody()); }
+    catch (_) { /* keep previous while typing invalid JSON */ }
+  }
+
+  document.getElementById("btnCurl").addEventListener("click", function () {
+    try {
+      const body = parseBody();
+      const c = curlFor(body);
+      curlBox.textContent = c;
+      show("Ready curl (unpaid → 402)", c,
+        "To pay: run via @x402/fetch (or another x402 client) with a Base Sepolia wallet funded in USDC. Browser wallet pay is not on this page yet.");
+    } catch (e) {
+      show("Invalid input", e.message, "");
+    }
+  });
+
+  document.getElementById("f").addEventListener("submit", async function (ev) {
+    ev.preventDefault();
+    let body;
+    try { body = parseBody(); }
+    catch (e) { show("Invalid input", e.message, ""); return; }
+    curlBox.textContent = curlFor(body);
+    btn402.disabled = true;
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify(body)
+      });
+      const pr = res.headers.get("payment-required") || res.headers.get("PAYMENT-REQUIRED");
+      let decoded = null;
+      if (pr) {
+        try {
+          const pad = "=".repeat((4 - (pr.length % 4)) % 4);
+          decoded = JSON.parse(atob(pr.replace(/-/g, "+").replace(/_/g, "/") + pad));
+        } catch (_) {}
+      }
+      const lines = [
+        "HTTP " + res.status,
+        pr ? "PAYMENT-REQUIRED: present" : "PAYMENT-REQUIRED: missing",
+        "",
+        decoded ? JSON.stringify(decoded, null, 2) : (await res.text())
+      ];
+      show(
+        res.status === 402 ? "Unpaid challenge (expected)" : "Response",
+        lines.join("\n"),
+        res.status === 402
+          ? "Next: pay $0.05 USDC on Base Sepolia with an x402 client (@x402/fetch agent snippet below), then retry. This page does not settle payment in-browser yet."
+          : "Unexpected status for an unpaid probe — check body."
+      );
+    } catch (e) {
+      show("Request failed", String(e), "Network or CORS issue — use curl or an agent instead.");
+    } finally {
+      btn402.disabled = false;
+    }
+  });
+
+  urlEl.addEventListener("change", refreshCurl);
+  schemaEl.addEventListener("change", refreshCurl);
+  refreshCurl();
+})();
+</script>
+</main>
 </body>
 </html>
