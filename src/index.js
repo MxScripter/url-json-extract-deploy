@@ -1,11 +1,16 @@
 "use strict";
 
+const path = require("path");
 const express = require("express");
 const { z } = require("zod");
 const Ajv = require("ajv");
 const { paymentMiddleware, x402ResourceServer } = require("@x402/express");
 const { ExactEvmScheme } = require("@x402/evm/exact/server");
 const { HTTPFacilitatorClient } = require("@x402/core/server");
+const {
+  declareDiscoveryExtension,
+  bazaarResourceServerExtension,
+} = require("@x402/extensions/bazaar");
 const {
   fetchPdfBuffer,
   extractPdfText,
@@ -206,9 +211,9 @@ function decodeEntities(s) {
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/"/g, '"')
-    .replace(/&#x26;#39;/g, "'")
-    .replace(/'/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
     .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
 }
@@ -329,13 +334,80 @@ app.get("/health", (_req, res) => {
   res.status(200).json({ ok: true });
 });
 
-// --- x402 paywall (POST /v1/extract + /v1/doc-extract; /health stays free) ---
+// Free landing + sample schemas (must stay before paywall middleware)
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(__dirname, "..", "public", "index.html"));
+});
+app.use(
+  "/schemas",
+  express.static(path.join(__dirname, "..", "fixtures", "schemas"), {
+    fallthrough: false,
+    index: false,
+  })
+);
+
+const extractDiscovery = declareDiscoveryExtension({
+  // bodyType required so POST routes catalog as JSON body (not GET queryParams)
+  bodyType: "json",
+  input: {
+    url: "https://example.com",
+    schema: {
+      type: "object",
+      properties: { title: { type: "string" } },
+      required: ["title"],
+    },
+  },
+  inputSchema: {
+    properties: {
+      url: { type: "string" },
+      schema: { type: "object" },
+    },
+    required: ["url", "schema"],
+  },
+  output: { example: { title: "Example Domain" } },
+});
+
+const docExtractDiscovery = declareDiscoveryExtension({
+  bodyType: "json",
+  input: {
+    url: "https://raw.githubusercontent.com/invoice-x/invoice2data/master/tests/compare/AmazonWebServices.pdf",
+    schema: {
+      type: "object",
+      properties: {
+        invoice_number: { type: "string" },
+        date: { type: "string" },
+      },
+      required: ["invoice_number", "date"],
+    },
+  },
+  inputSchema: {
+    properties: {
+      url: { type: "string", description: "HTTPS URL to a text PDF" },
+      schema: {
+        type: "object",
+        description: "JSON Schema the extracted object must match",
+      },
+    },
+    required: ["url", "schema"],
+  },
+  output: {
+    example: { invoice_number: "42183017", date: "August 3 , 2014" },
+    schema: {
+      type: "object",
+      properties: {
+        invoice_number: { type: "string" },
+        date: { type: "string" },
+      },
+    },
+  },
+});
+
+// --- x402 paywall (POST /v1/extract + /v1/doc-extract; /, /health, /schemas stay free) ---
 if (PAY_TO_ADDRESS) {
   const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
-  const resourceServer = new x402ResourceServer(facilitatorClient).register(
-    X402_NETWORK,
-    new ExactEvmScheme()
-  );
+  const resourceServer = new x402ResourceServer(facilitatorClient)
+    .register(X402_NETWORK, new ExactEvmScheme())
+    .registerExtension(bazaarResourceServerExtension);
   app.use(
     paymentMiddleware(
       {
@@ -348,6 +420,8 @@ if (PAY_TO_ADDRESS) {
           },
           description: "Extract JSON fields from a URL against a schema",
           mimeType: "application/json",
+          serviceName: "url-json-extract",
+          extensions: { ...extractDiscovery },
         },
         "POST /v1/doc-extract": {
           accepts: {
@@ -358,6 +432,8 @@ if (PAY_TO_ADDRESS) {
           },
           description: "Extract JSON fields from a PDF URL against a schema",
           mimeType: "application/json",
+          serviceName: "doc-extract",
+          extensions: { ...docExtractDiscovery },
         },
       },
       resourceServer

@@ -4,15 +4,25 @@ URL → JSON extract service (Node/Express) with optional **x402** paywall.
 
 - `POST /v1/extract` — fetch an HTTPS page, pull dumb HTML signals, shape to a JSON Schema (price default `$0.001`).
 - `POST /v1/doc-extract` — fetch an HTTPS PDF, extract text (no OCR), heuristically map into a JSON Schema (price default `$0.05`).
+- `GET /` — free static landing (`public/index.html`).
 - `GET /health` — always free.
+- `GET /schemas/*` — free sample JSON Schemas from `fixtures/schemas/`.
 
 ## API
+
+### `GET /`
+
+Free HTML landing page (what it does, prices, agent snippet, sample schema links).
 
 ### `GET /health`
 
 ```json
 {"ok":true}
 ```
+
+### `GET /schemas/{name}.json`
+
+Sample schemas: [`invoice`](/schemas/invoice.json), [`receipt`](/schemas/receipt.json), [`order`](/schemas/order.json) (served from `fixtures/schemas/`).
 
 ### `POST /v1/extract`
 
@@ -84,6 +94,50 @@ Local default (no `PAY_TO_ADDRESS`): server starts, logs a warning, and both ext
 ## x402 settle behavior
 
 `@x402/express` **verifies before the handler and settles after a successful 2xx response**. On handler 4xx/5xx it cancels settlement (payment is not settled). The `exact` scheme uses the `authorization` payment flow (`settleAfterHandler: true`). No extra config is required for settle-on-success.
+
+## Bazaar discovery
+
+Both paid routes declare the [Bazaar](https://docs.x402.org/extensions/bazaar) extension via `declareDiscoveryExtension` from `@x402/extensions/bazaar` (with `bodyType: "json"` for POST JSON bodies). The resource server also registers `bazaarResourceServerExtension`.
+
+Facilitators that support Bazaar may catalog a resource **after a paid settlement whose `PaymentPayload` echoes the extension**. Clients using `@x402/fetch` typically echo automatically. Server-side declaration alone does not catalog anything until a paying client echoes `bazaar` in the payload.
+
+## Agent client (live)
+
+Unpaid requests get **HTTP 402** with a `PAYMENT-REQUIRED` header. `@x402/fetch` wraps `fetch`, pays, and retries → **200**. `GET /health` and `GET /` stay free.
+
+```js
+import { privateKeyToAccount } from "viem/accounts";
+import { wrapFetchWithPayment, x402Client } from "@x402/fetch";
+import { registerExactEvmScheme } from "@x402/evm/exact/client";
+
+const account = privateKeyToAccount(process.env.PRIVATE_KEY); // Base Sepolia key with USDC
+const client = new x402Client();
+registerExactEvmScheme(client, { signer: account });
+const fetchWithPayment = wrapFetchWithPayment(fetch, client);
+
+const res = await fetchWithPayment(
+  "https://url-json-extract-production.up.railway.app/v1/doc-extract",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      url: "https://raw.githubusercontent.com/invoice-x/invoice2data/master/tests/compare/AmazonWebServices.pdf",
+      schema: {
+        type: "object",
+        properties: {
+          invoice_number: { type: "string" },
+          date: { type: "string" },
+        },
+        required: ["invoice_number", "date"],
+      },
+    }),
+  }
+);
+
+console.log(res.status, await res.json());
+// unpaid without wrap → 402 + PAYMENT-REQUIRED
+// paid wrap retries → 200 + schema object
+```
 
 ## Local run
 
@@ -169,7 +223,7 @@ curl -sS -i -X POST http://127.0.0.1:3011/v1/doc-extract \
   -d '{"url":"file://sample-invoice.pdf","schema":{"type":"object","properties":{"invoice_number":{"type":"string"}},"required":["invoice_number"]}}'
 ```
 
-Expected: **HTTP 402** for doc-extract. `/health` on the same port still returns `200`. `/v1/extract` remains independently priced/protected as before.
+Expected: **HTTP 402** for doc-extract. `/health` and `/` on the same port still return `200`. `/v1/extract` remains independently priced/protected as before. The `PAYMENT-REQUIRED` payload includes `extensions.bazaar` when the paywall is configured.
 
 ## SSRF / fetch guards
 
