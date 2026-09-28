@@ -3,11 +3,21 @@
 const express = require("express");
 const { z } = require("zod");
 const Ajv = require("ajv");
+const { paymentMiddleware, x402ResourceServer } = require("@x402/express");
+const { ExactEvmScheme } = require("@x402/evm/exact/server");
+const { HTTPFacilitatorClient } = require("@x402/core/server");
 
 const PORT = Number(process.env.PORT) || 3000;
 const FETCH_TIMEOUT_MS = 8_000;
 const MAX_BODY_BYTES = 2 * 1024 * 1024; // 2 MB
 const MAX_REDIRECTS = 3;
+
+const PAY_TO_ADDRESS = process.env.PAY_TO_ADDRESS || "";
+const X402_NETWORK = process.env.X402_NETWORK || "eip155:84532";
+const X402_PRICE = process.env.X402_PRICE || "$0.001";
+const FACILITATOR_URL = process.env.FACILITATOR_URL || "https://x402.org/facilitator";
+const REQUIRE_X402 =
+  process.env.REQUIRE_X402 === "1" || process.env.NODE_ENV === "production";
 
 const BodySchema = z.object({
   url: z.string().url(),
@@ -309,6 +319,51 @@ app.use(express.json({ limit: "256kb" }));
 app.get("/health", (_req, res) => {
   res.status(200).json({ ok: true });
 });
+
+// --- x402 paywall (POST /v1/extract only; /health stays free) ---
+if (PAY_TO_ADDRESS) {
+  const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
+  const resourceServer = new x402ResourceServer(facilitatorClient).register(
+    X402_NETWORK,
+    new ExactEvmScheme()
+  );
+  app.use(
+    paymentMiddleware(
+      {
+        "POST /v1/extract": {
+          accepts: {
+            scheme: "exact",
+            price: X402_PRICE,
+            network: X402_NETWORK,
+            payTo: PAY_TO_ADDRESS,
+          },
+          description: "Extract JSON fields from a URL against a schema",
+          mimeType: "application/json",
+        },
+      },
+      resourceServer
+    )
+  );
+  console.log(
+    `x402 paywall ON for POST /v1/extract (${X402_PRICE} on ${X402_NETWORK} → ${PAY_TO_ADDRESS})`
+  );
+} else if (REQUIRE_X402) {
+  app.use("/v1/extract", (req, res, next) => {
+    if (req.method !== "POST") return next();
+    return res.status(503).json({
+      error: "paywall_not_configured",
+      message:
+        "PAY_TO_ADDRESS is required when NODE_ENV=production or REQUIRE_X402=1",
+    });
+  });
+  console.error(
+    "FATAL config: PAY_TO_ADDRESS missing but REQUIRE_X402/production is set — POST /v1/extract returns 503"
+  );
+} else {
+  console.warn(
+    "WARNING: PAY_TO_ADDRESS not set — POST /v1/extract is UNPROTECTED. Set PAY_TO_ADDRESS for production (or REQUIRE_X402=1)."
+  );
+}
 
 app.post("/v1/extract", async (req, res) => {
   const parsed = BodySchema.safeParse(req.body);
