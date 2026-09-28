@@ -6,6 +6,11 @@ const Ajv = require("ajv");
 const { paymentMiddleware, x402ResourceServer } = require("@x402/express");
 const { ExactEvmScheme } = require("@x402/evm/exact/server");
 const { HTTPFacilitatorClient } = require("@x402/core/server");
+const {
+  fetchPdfBuffer,
+  extractPdfText,
+  mapPdfTextToSchema,
+} = require("./docExtract");
 
 const PORT = Number(process.env.PORT) || 3000;
 const FETCH_TIMEOUT_MS = 8_000;
@@ -15,6 +20,7 @@ const MAX_REDIRECTS = 3;
 const PAY_TO_ADDRESS = process.env.PAY_TO_ADDRESS || "";
 const X402_NETWORK = process.env.X402_NETWORK || "eip155:84532";
 const X402_PRICE = process.env.X402_PRICE || "$0.001";
+const X402_DOC_PRICE = process.env.X402_DOC_PRICE || "$0.05";
 const FACILITATOR_URL = process.env.FACILITATOR_URL || "https://x402.org/facilitator";
 const REQUIRE_X402 =
   process.env.REQUIRE_X402 === "1" || process.env.NODE_ENV === "production";
@@ -197,12 +203,12 @@ async function fetchSafe(urlString) {
 
 function decodeEntities(s) {
   return s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
+    .replace(/&/g, "&")
+    .replace(/</g, "<")
+    .replace(/>/g, ">")
+    .replace(/"/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
+    .replace(/'/g, "'")
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
     .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
 }
@@ -323,7 +329,7 @@ app.get("/health", (_req, res) => {
   res.status(200).json({ ok: true });
 });
 
-// --- x402 paywall (POST /v1/extract only; /health stays free) ---
+// --- x402 paywall (POST /v1/extract + /v1/doc-extract; /health stays free) ---
 if (PAY_TO_ADDRESS) {
   const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
   const resourceServer = new x402ResourceServer(facilitatorClient).register(
@@ -343,28 +349,40 @@ if (PAY_TO_ADDRESS) {
           description: "Extract JSON fields from a URL against a schema",
           mimeType: "application/json",
         },
+        "POST /v1/doc-extract": {
+          accepts: {
+            scheme: "exact",
+            price: X402_DOC_PRICE,
+            network: X402_NETWORK,
+            payTo: PAY_TO_ADDRESS,
+          },
+          description: "Extract JSON fields from a PDF URL against a schema",
+          mimeType: "application/json",
+        },
       },
       resourceServer
     )
   );
   console.log(
-    `x402 paywall ON for POST /v1/extract (${X402_PRICE} on ${X402_NETWORK} → ${PAY_TO_ADDRESS})`
+    `x402 paywall ON for POST /v1/extract (${X402_PRICE}) and POST /v1/doc-extract (${X402_DOC_PRICE}) on ${X402_NETWORK} → ${PAY_TO_ADDRESS}`
   );
 } else if (REQUIRE_X402) {
-  app.use("/v1/extract", (req, res, next) => {
+  const refusePaywall = (req, res, next) => {
     if (req.method !== "POST") return next();
     return res.status(503).json({
       error: "paywall_not_configured",
       message:
         "PAY_TO_ADDRESS is required when NODE_ENV=production or REQUIRE_X402=1",
     });
-  });
+  };
+  app.use("/v1/extract", refusePaywall);
+  app.use("/v1/doc-extract", refusePaywall);
   console.error(
-    "FATAL config: PAY_TO_ADDRESS missing but REQUIRE_X402/production is set — POST /v1/extract returns 503"
+    "FATAL config: PAY_TO_ADDRESS missing but REQUIRE_X402/production is set — POST /v1/extract and /v1/doc-extract return 503"
   );
 } else {
   console.warn(
-    "WARNING: PAY_TO_ADDRESS not set — POST /v1/extract is UNPROTECTED. Set PAY_TO_ADDRESS for production (or REQUIRE_X402=1)."
+    "WARNING: PAY_TO_ADDRESS not set — POST /v1/extract and /v1/doc-extract are UNPROTECTED. Set PAY_TO_ADDRESS for production (or REQUIRE_X402=1)."
   );
 }
 
@@ -414,6 +432,65 @@ app.post("/v1/extract", async (req, res) => {
   }
 
   // Success body IS the data matching schema (no wrapper)
+  return res.status(200).json(data);
+});
+
+
+app.post("/v1/doc-extract", async (req, res) => {
+  const parsed = BodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: "invalid_request",
+      issues: parsed.error.issues,
+    });
+  }
+
+  const { url, schema } = parsed.data;
+
+  // Compile schema early so invalid schemas are 400 (not 422)
+  const ajv = new Ajv({ allErrors: true, strict: false });
+  let validate;
+  try {
+    validate = ajv.compile(schema);
+  } catch (err) {
+    return res.status(400).json({
+      error: "invalid_schema",
+      message: err.message,
+    });
+  }
+
+  let buf;
+  try {
+    buf = await fetchPdfBuffer(url, assertSafeUrl);
+  } catch (err) {
+    const status = err.status || 400;
+    return res.status(status).json({
+      error: err.code || "fetch_error",
+      message: err.message,
+    });
+  }
+
+  let extracted;
+  try {
+    extracted = await extractPdfText(buf);
+  } catch (err) {
+    const status = err.status || 400;
+    return res.status(status).json({
+      error: err.code || "pdf_extract_failed",
+      message: err.message,
+    });
+  }
+
+  const data = mapPdfTextToSchema(schema, extracted.text);
+  const ok = validate(data);
+  if (!ok) {
+    // mazbot: doc-extract schema fails use 422 (extract stays 400)
+    return res.status(422).json({
+      error: "schema_validation_failed",
+      errors: validate.errors,
+    });
+  }
+
   return res.status(200).json(data);
 });
 
