@@ -1,7 +1,7 @@
 {
   "name": "url-json-extract",
   "version": "1.0.0",
-  "description": "URL → JSON extract service with optional x402 paywall on POST /v1/extract and POST /v1/doc-extract",
+  "description": "URL/PDF → JSON extract service with optional x402 paywall on POST /v1/extract and POST /v1/doc-extract",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js"
