@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "merchant": { "type": "string" },
+    "date": { "type": "string" },
+    "total": { "type": "number" },
+    "currency": { "type": "string" },
+    "payment_method": { "type": "string" }
+  },
+  "required": ["merchant", "total"]
+}
