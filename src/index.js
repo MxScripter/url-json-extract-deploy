@@ -203,12 +203,12 @@ async function fetchSafe(urlString) {
 
 function decodeEntities(s) {
   return s
-    .replace(/&#x26;amp;/g, "&")
-    .replace(/&#x26;lt;/g, "<")
-    .replace(/&#x26;gt;/g, ">")
-    .replace(/&#x26;quot;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/"/g, '"')
     .replace(/&#x26;#39;/g, "'")
-    .replace(/&#x26;apos;/g, "'")
+    .replace(/'/g, "'")
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
     .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
 }
