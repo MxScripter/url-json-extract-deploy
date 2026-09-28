@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "invoice_number": { "type": "string" },
+    "date": { "type": "string" },
+    "vendor": { "type": "string" },
+    "total": { "type": "number" },
+    "currency": { "type": "string" },
+    "line_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": { "type": "string" },
+          "quantity": { "type": "number" },
+          "unit_price": { "type": "number" },
+          "amount": { "type": "number" }
+        }
+      }
+    }
+  },
+  "required": ["invoice_number", "date", "vendor", "total"]
+}
