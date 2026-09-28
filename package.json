@@ -1,7 +1,7 @@
 {
   "name": "url-json-extract",
   "version": "1.0.0",
-  "description": "URL → JSON extract service with optional x402 paywall on POST /v1/extract",
+  "description": "URL → JSON extract service with optional x402 paywall on POST /v1/extract and POST /v1/doc-extract",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js"
@@ -15,6 +15,7 @@
     "@x402/express": "^2.27.0",
     "ajv": "^8.17.1",
     "express": "^4.21.2",
+    "pdf-parse": "^2.4.5",
     "zod": "^3.24.2"
   }
 }
