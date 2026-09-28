@@ -314,6 +314,9 @@ function buildFromSchema(schema, facts) {
 
 const app = express();
 app.disable("x-powered-by");
+// Railway (and most hosts) terminate TLS upstream; without this, x402
+// resource.url is built as http:// and can break settlement matching.
+app.set("trust proxy", 1);
 app.use(express.json({ limit: "256kb" }));
 
 app.get("/health", (_req, res) => {
