@@ -1,0 +1,35 @@
+{
+  "name": "doc-extract",
+  "description": "Extract JSON fields from an HTTPS PDF URL against a JSON Schema",
+  "endpoint": "https://extract.theifstatement.dev/v1/doc-extract",
+  "method": "POST",
+  "price": "$0.05",
+  "network": "eip155:84532",
+  "asset": "USDC",
+  "payTo": "0x85588feBE09cf8e18D928130eF0cD1b983a4b0aA",
+  "requestBody": {
+    "url": "https://example.com/invoice.pdf",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "invoice_number": { "type": "string" },
+        "date": { "type": "string" }
+      },
+      "required": ["invoice_number", "date"]
+    }
+  },
+  "responseExample": {
+    "invoice_number": "42183017",
+    "date": "August 3 , 2014"
+  },
+  "x402": {
+    "version": 2,
+    "scheme": "exact",
+    "bazaar": true
+  },
+  "legacy": {
+    "endpoint": "https://extract.theifstatement.dev/v1/extract",
+    "price": "$0.001",
+    "note": "demo HTML URL → schema"
+  }
+}

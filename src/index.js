@@ -338,6 +338,10 @@ app.get("/health", (_req, res) => {
 app.get("/", (_req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "index.html"));
 });
+app.get("/discover.json", (_req, res) => {
+  res.type("application/json");
+  res.sendFile(path.join(__dirname, "..", "public", "discover.json"));
+});
 app.use(
   "/schemas",
   express.static(path.join(__dirname, "..", "fixtures", "schemas"), {
